@@ -456,13 +456,20 @@
     show("landing");
   };
 
-  // restore session
+  // restore session only if the account still exists
   const saved = localStorage.getItem("reviewerCode");
   if (saved) {
-    reviewer = saved;
-    $("whoBadge").textContent = saved;
-    $("phaseBadge").textContent = "Phase " + PHASE;
-    startReview();
+    db.ref("accounts/" + saved).once("value").then(snap => {
+      if (snap.exists()) {
+        reviewer = saved;
+        $("whoBadge").textContent = saved;
+        $("phaseBadge").textContent = "Phase " + PHASE;
+        startReview();
+      } else {
+        localStorage.removeItem("reviewerCode");
+        show("landing");
+      }
+    }).catch(() => show("landing"));
   } else {
     show("landing");
   }
