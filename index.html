@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tamil Benchmark Review</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f4f6f8; color: #1a1a1a; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 16px; }
+  header { background: #1e3a5f; color: #fff; padding: 14px 16px; }
+  header .wrap { padding: 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+  h1 { font-size: 17px; margin: 0; }
+  .badge { background: #366899; border-radius: 6px; padding: 4px 10px; font-size: 13px; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.12); padding: 18px; margin-top: 14px; }
+  .label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #5b7186; margin: 14px 0 4px; }
+  .label:first-child { margin-top: 0; }
+  .stim { white-space: pre-wrap; background: #f0f4f8; border-left: 4px solid #1e3a5f; padding: 10px 12px; border-radius: 0 6px 6px 0; font-size: 15.5px; line-height: 1.55; }
+  .stim.ref { border-left-color: #2e7d32; background: #eef7ee; }
+  .stim.ai { border-left-color: #b26a00; background: #fdf5e6; }
+  details.think { margin-top: 8px; }
+  details.think summary { cursor: pointer; font-size: 13px; color: #5b7186; }
+  details.think pre { white-space: pre-wrap; background: #eeeeee; padding: 10px; border-radius: 6px; font-size: 13.5px; line-height: 1.5; max-height: 320px; overflow-y: auto; }
+  .q { margin-top: 18px; }
+  .q .qt { font-size: 15.5px; font-weight: 600; margin-bottom: 6px; }
+  .choices label { display: inline-block; margin-right: 18px; font-size: 15px; }
+  textarea { width: 100%; min-height: 74px; font: inherit; padding: 8px; border: 1px solid #c4cdd6; border-radius: 6px; resize: vertical; }
+  .btns { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 11px 22px; cursor: pointer; font-weight: 600; }
+  .primary { background: #1e3a5f; color: #fff; }
+  .primary:disabled { opacity: .45; cursor: default; }
+  .ghost { background: #e3e9ef; color: #1e3a5f; }
+  .start { display: flex; flex-direction: column; gap: 14px; }
+  .phases { display: flex; gap: 10px; }
+  .phases button { flex: 1; background: #e3e9ef; color: #1e3a5f; padding: 16px; }
+  .phases button.sel { background: #1e3a5f; color: #fff; }
+  input[type=text] { font: inherit; padding: 11px 12px; border: 1px solid #c4cdd6; border-radius: 8px; width: 100%; }
+  .meta { font-size: 13.5px; color: #5b7186; }
+  .note { background: #fff8e1; border: 1px solid #f0d060; border-radius: 8px; padding: 12px; font-size: 14.5px; margin-top: 14px; display: none; }
+  #qbox, #itembox { display: none; }
+  .err { color: #b3261e; font-size: 14px; margin-top: 8px; }
+  .progress { height: 8px; background: #d7e0e8; border-radius: 4px; overflow: hidden; margin-top: 6px; }
+  .progress > div { height: 100%; background: #2e7d32; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Tamil Benchmark — Human Review</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="badge" id="whoBadge">not signed in</span>
+      <span class="badge" id="phaseBadge"></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card start" id="startbox">
+    <div>
+      <div class="label">Your reviewer code</div>
+      <input type="text" id="revIn" placeholder="e.g. R1" autocomplete="off">
+      <div class="meta" style="margin-top:6px">Your code keeps your responses anonymous (R1, R2, …).</div>
+    </div>
+    <div>
+      <div class="label">Phase</div>
+      <div class="phases">
+        <button id="p1btn" class="sel">Phase 1 — test cases<br><small>5 questions</small></button>
+        <button id="p2btn">Phase 2 — AI responses<br><small>2 questions</small></button>
+      </div>
+    </div>
+    <button class="primary" id="startBtn">Start reviewing</button>
+    <div class="err" id="startErr"></div>
+  </div>
+
+  <div class="card" id="itembox">
+    <div class="meta" id="progLine"></div>
+    <div class="progress"><div id="progBar"></div></div>
+
+    <div id="qbox">
+      <div class="label">Test case</div>
+      <div class="stim" id="stimBox"></div>
+
+      <div id="refBlock">
+        <div class="label">Reference (correct) answer</div>
+        <div class="stim ref" id="refBox"></div>
+      </div>
+
+      <div id="aiBlock" style="display:none">
+        <div class="label">AI model response</div>
+        <div class="stim ai" id="aiBox"></div>
+        <details class="think"><summary>Show the model's reasoning</summary><pre id="thinkBox"></pre></details>
+      </div>
+
+      <div id="questions"></div>
+
+      <div class="btns">
+        <button class="primary" id="submitBtn">Submit &amp; next test case</button>
+        <button class="ghost" id="dlBtn">Download my responses</button>
+        <button class="ghost" id="quitBtn">Finish session</button>
+      </div>
+      <div class="err" id="err"></div>
+    </div>
+
+    <div class="note" id="emptyNote"></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+
+  if (FIREBASE_CONFIG.apiKey.startsWith("PASTE")) {
+    $("startErr").textContent = "Setup incomplete: fill config.js with your Firebase settings (see admin.html).";
+    $("startBtn").disabled = true;
+  }
+
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.database();
+
+  let phase = 1;
+  let reviewer = null;
+  let ids = [];
+  let counts = {};
+  let mine = new Set();
+  let currentId = null;
+
+  $("p1btn").onclick = () => { phase = 1; $("p1btn").classList.add("sel"); $("p2btn").classList.remove("sel"); };
+  $("p2btn").onclick = () => { phase = 2; $("p2btn").classList.add("sel"); $("p1btn").classList.remove("sel"); };
+
+  function questions() { return phase === 1 ? PHASE1_QUESTIONS : PHASE2_QUESTIONS; }
+
+  $("startBtn").onclick = async () => {
+    const rev = $("revIn").value.trim().toUpperCase();
+    if (!rev) { $("startErr").textContent = "Enter your reviewer code first."; return; }
+    $("startErr").textContent = "";
+    reviewer = rev;
+    localStorage.setItem("reviewerCode", rev);
+    $("whoBadge").textContent = rev;
+    $("phaseBadge").textContent = "Phase " + phase;
+    $("startBtn").disabled = true;
+    $("startBtn").textContent = "Loading…";
+    try {
+      const [metaSnap, countsSnap, respSnap] = await Promise.all([
+        db.ref("meta/" + phase).once("value"),
+        db.ref("counts").once("value"),
+        db.ref("responses").once("value")
+      ]);
+      ids = metaSnap.val() || [];
+      counts = countsSnap.val() || {};
+      mine = new Set();
+      const respAll = respSnap.val() || {};
+      for (const iid of Object.keys(respAll)) {
+        if (respAll[iid] && respAll[iid][reviewer]) mine.add(iid);
+      }
+      if (ids.length === 0) {
+        $("startbox").style.display = "none";
+        $("itembox").style.display = "block";
+        $("emptyNote").style.display = "block";
+        $("emptyNote").textContent = "No items seeded for this phase yet. Ask the researcher to run the import on admin.html.";
+        return;
+      }
+      $("startbox").style.display = "none";
+      $("itembox").style.display = "block";
+      await next();
+    } catch (e) {
+      $("startErr").textContent = "Could not reach the database: " + e.message;
+      $("startBtn").disabled = false;
+      $("startBtn").textContent = "Start reviewing";
+    }
+  };
+
+  function pickNext() {
+    let best = null, bestC = Infinity;
+    for (const id of ids) {
+      if (mine.has(id)) continue;
+      const c = counts[id] || 0;
+      if (c < bestC || (c === bestC && Math.random() < 0.5)) { bestC = c; best = id; }
+    }
+    return best;
+  }
+
+  async function next() {
+    currentId = pickNext();
+    updateProgress();
+    if (!currentId) {
+      $("qbox").style.display = "none";
+      $("emptyNote").style.display = "block";
+      $("emptyNote").textContent = "You've reviewed every available item. Thank you!";
+      return;
+    }
+    $("emptyNote").style.display = "none";
+    $("err").textContent = "";
+    $("submitBtn").disabled = false;
+    $("submitBtn").textContent = "Submit & next test case";
+    const snap = await db.ref("items/" + currentId).once("value");
+    const item = snap.val();
+    if (!item) { mine.add(currentId); return next(); }
+
+    $("stimBox").textContent = item.input;
+    $("refBox").textContent = item.reference_answer;
+    $("aiBlock").style.display = phase === 2 ? "block" : "none";
+    $("refBlock").style.display = "block";
+    if (phase === 2) {
+      $("aiBox").textContent = item.raw_response || "(no response recorded)";
+      $("thinkBox").textContent = item.thinking || "(no reasoning recorded)";
+    }
+    const reviewCount = counts[currentId] || 0;
+    $("progLine").textContent = "Item " + (mine.size + 1) + " of your session · this item has been reviewed " + reviewCount + " time" + (reviewCount === 1 ? "" : "s") + " before";
+
+    const box = $("questions");
+    box.innerHTML = "";
+    for (const q of questions()) {
+      const div = document.createElement("div");
+      div.className = "q";
+      const qt = document.createElement("div");
+      qt.className = "qt";
+      qt.textContent = q.label;
+      div.appendChild(qt);
+      if (q.type === "yesno") {
+        const ch = document.createElement("div");
+        ch.className = "choices";
+        for (const [val, lab] of [["yes", "Yes"], ["no", "No"]]) {
+          const l = document.createElement("label");
+          const r = document.createElement("input");
+          r.type = "radio"; r.name = q.id; r.value = val;
+          l.appendChild(r);
+          l.appendChild(document.createTextNode(" " + lab));
+          ch.appendChild(l);
+        }
+        div.appendChild(ch);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.id = "ta_" + q.id;
+        ta.placeholder = "Optional — describe any issue you found";
+        div.appendChild(ta);
+      }
+      box.appendChild(div);
+    }
+    $("qbox").style.display = "block";
+  }
+
+  function updateProgress() {
+    const pct = ids.length ? Math.round(100 * mine.size / ids.length) : 0;
+    $("progBar").style.width = pct + "%";
+  }
+
+  $("submitBtn").onclick = async () => {
+    if (!currentId) return;
+    const answers = {};
+    for (const q of questions()) {
+      if (q.type === "yesno") {
+        const sel = document.querySelector("input[name='" + q.id + "']:checked");
+        if (!sel) { $("err").textContent = "Please answer every Yes/No question (question text boxes are optional)."; return; }
+        answers[q.id] = sel.value;
+      } else {
+        answers[q.id] = ($("ta_" + q.id).value || "").trim();
+      }
+    }
+    $("submitBtn").disabled = true;
+    $("submitBtn").textContent = "Saving…";
+    try {
+      await db.ref("responses/" + currentId + "/" + reviewer).set({ answers: answers, ts: Date.now(), phase: phase });
+      await db.ref("counts/" + currentId).transaction((c) => (c || 0) + 1);
+      mine.add(currentId);
+      counts[currentId] = (counts[currentId] || 0) + 1;
+      await next();
+    } catch (e) {
+      $("err").textContent = "Save failed: " + e.message;
+      $("submitBtn").disabled = false;
+      $("submitBtn").textContent = "Submit & next test case";
+    }
+  };
+
+  $("dlBtn").onclick = async () => {
+    const snap = await db.ref("responses").once("value");
+    const all = snap.val() || {};
+    const mineOut = {};
+    for (const iid of Object.keys(all)) {
+      if (all[iid] && all[iid][reviewer]) mineOut[iid] = all[iid][reviewer];
+    }
+    const blob = new Blob([JSON.stringify({ reviewer: reviewer, phase: phase, responses: mineOut }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "responses_" + reviewer + ".json";
+    a.click();
+  };
+
+  $("quitBtn").onclick = async () => {
+    $("whoBadge").textContent = "not signed in";
+    $("phaseBadge").textContent = "";
+    $("itembox").style.display = "none";
+    $("startbox").style.display = "flex";
+    $("startBtn").disabled = false;
+    $("startBtn").textContent = "Start reviewing";
+  };
+
+  const saved = localStorage.getItem("reviewerCode");
+  if (saved) $("revIn").value = saved;
+})();
+</script>
+</body>
+</html>

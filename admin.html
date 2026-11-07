@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Tool — Admin</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f4f6f8; color: #1a1a1a; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 18px; }
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; margin-top: 26px; }
+  .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,.12); padding: 18px; margin-top: 14px; }
+  ol, ul { line-height: 1.65; font-size: 14.5px; }
+  code { background: #eef2f6; padding: 1px 5px; border-radius: 4px; font-size: 13.5px; }
+  input[type=file] { display: block; margin-top: 8px; font-size: 14px; }
+  button { font: inherit; border: 0; border-radius: 8px; padding: 11px 22px; cursor: pointer; font-weight: 600; background: #1e3a5f; color: #fff; margin-top: 14px; }
+  button:disabled { opacity: .45; }
+  button.danger { background: #b3261e; }
+  #status { white-space: pre-wrap; font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: #0f1b2a; color: #9fe8a6; border-radius: 8px; padding: 12px; margin-top: 14px; min-height: 60px; display: none; }
+  .warn { background: #fff8e1; border: 1px solid #f0d060; border-radius: 8px; padding: 12px 14px; font-size: 14.5px; margin-top: 12px; }
+  .ok { background: #eef7ee; border: 1px solid #9cc8a0; border-radius: 8px; padding: 12px 14px; font-size: 14.5px; margin-top: 12px; display: none; }
+  label.fl { display: block; margin-top: 14px; font-weight: 600; font-size: 14.5px; }
+  .small { font-size: 13.5px; color: #5b7186; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Review Tool — Admin</h1>
+
+  <div class="card">
+    <h2 style="margin-top:0">One-time setup (10 minutes)</h2>
+    <ol>
+      <li>Go to <code>console.firebase.google.com</code> → <b>Add project</b> (any name, e.g. tamil-review). Analytics can stay off.</li>
+      <li>In the project: <b>Build → Realtime Database → Create database</b> → start in <b>test mode</b> → pick nearest region.</li>
+      <li><b>Project settings (gear) → Your apps → Web (&lt;/&gt;)</b> → register an app (no hosting needed) → copy the <code>firebaseConfig</code> values into <b>config.js</b> next to this file (replace the PASTE_… placeholders). The <code>databaseURL</code> must be present — it looks like <code>https://&lt;project&gt;-default-rtdb.firebaseio.com</code>.</li>
+      <li>Database rules (test mode is fine for this study — the data has no names, only codes). If you later edit rules, keep read/write true for paths <code>/items /meta /counts /responses</code>.</li>
+      <li>Host these three files together online: push the <code>review-tool/</code> folder to a GitHub repo → <b>Settings → Pages → deploy from branch</b> (or Firebase Hosting). Reviewers get that URL.</li>
+      <li>Below: import the test cases (and results after your model run finishes), then share <code>index.html</code>'s link with reviewers.</li>
+    </ol>
+    <div class="warn" id="cfgWarn">config.js still has placeholder values — do setup step 3 before importing.</div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Import data</h2>
+    <p class="small">Required: <code>all_720.csv</code> (the benchmark spreadsheet — feeds Phase 1). Optional: <code>results.csv</code> from your Kaggle run — joins on <code>id</code> and feeds Phase 2 (AI response + reasoning).</p>
+    <label class="fl">all_720.csv</label>
+    <input type="file" id="fItems" accept=".csv">
+    <label class="fl">results.csv (optional — Phase 2)</label>
+    <input type="file" id="fResults" accept=".csv">
+    <button id="importBtn">Import into Firebase</button>
+    <div id="status"></div>
+    <div class="ok" id="doneNote"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Maintenance</h2>
+    <button class="danger" id="resetBtn">Reset all review counts (responses kept)</button>
+    <div class="small" style="margin-top:8px">Counts drive the "least-reviewed first" serving. Resetting restarts the queue for everyone.</div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  let log = [];
+  function say(s) { log.push(s); $("status").style.display = "block"; $("status").textContent = log.join("\n"); }
+
+  const configured = !FIREBASE_CONFIG.apiKey.startsWith("PASTE");
+  $("cfgWarn").style.display = configured ? "none" : "block";
+
+  if (configured) {
+    firebase.initializeApp(FIREBASE_CONFIG);
+  }
+  const db = configured ? firebase.database() : null;
+
+  function parseCsv(file) {
+    return new Promise((resolve, reject) => {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (r) => resolve(r.data),
+        error: (e) => reject(e)
+      });
+    });
+  }
+
+  $("importBtn").onclick = async () => {
+    if (!configured) { say("ERROR: fill config.js first."); return; }
+    const fItems = $("fItems").files[0];
+    if (!fItems) { say("ERROR: choose all_720.csv"); return; }
+    $("importBtn").disabled = true;
+    log = [];
+    try {
+      const items = await parseCsv(fItems);
+      say("all_720.csv: " + items.length + " rows");
+
+      let resultMap = {};
+      const fRes = $("fResults").files[0];
+      if (fRes) {
+        const res = await parseCsv(fRes);
+        say("results.csv: " + res.length + " rows");
+        for (const r of res) if (r.id) resultMap[r.id] = r;
+      }
+
+      const ids = [];
+      const phase2Ids = [];
+      const chunk = 40;
+      for (let i = 0; i < items.length; i += chunk) {
+        const upd = {};
+        for (const it of items.slice(i, i + chunk)) {
+          if (!it.id) continue;
+          ids.push(it.id);
+          const rec = {
+            id: it.id,
+            category: it.category || "",
+            format: it.format || "",
+            input: it.input || "",
+            instructions: it.instructions || "",
+            reference_answer: it.reference_answer || ""
+          };
+          const res = resultMap[it.id];
+          if (res) {
+            rec.raw_response = res.raw_response || "";
+            rec.thinking = res.thinking || "";
+            rec.model = res.model || "";
+            rec.precision = res.precision || "";
+            rec.format_ok = String(res.format_ok);
+            if (rec.raw_response) phase2Ids.push(it.id);
+          }
+          upd["items/" + it.id] = rec;
+        }
+        await db.ref().update(upd);
+        say("items written: " + Math.min(i + chunk, items.length) + "/" + items.length);
+      }
+
+      const countsSnap = await db.ref("counts").once("value");
+      const existingCounts = countsSnap.val() || {};
+      const cntUpdates = {};
+      for (const id of ids) if (existingCounts[id] === undefined) cntUpdates["counts/" + id] = 0;
+      if (Object.keys(cntUpdates).length) await db.ref().update(cntUpdates);
+      say("counts initialized: " + Object.keys(cntUpdates).length + " (existing preserved)");
+
+      await db.ref("meta").set({
+        "1": ids,
+        "2": phase2Ids
+      });
+      say("meta written: phase1=" + ids.length + " phase2=" + phase2Ids.length);
+
+      $("doneNote").style.display = "block";
+      $("doneNote").textContent = phase2Ids.length === ids.length
+        ? "Import complete — both phases ready to serve."
+        : "Import complete — Phase 1 ready (" + ids.length + " items). Phase 2 has " + phase2Ids.length + " items (import results.csv after the model run).";
+    } catch (e) {
+      say("ERROR: " + e.message);
+    } finally {
+      $("importBtn").disabled = false;
+    }
+  };
+
+  $("resetBtn").onclick = async () => {
+    if (!configured) return;
+    if (!confirm("Reset every count to 0? Responses are kept.")) return;
+    const snap = await db.ref("counts").once("value");
+    const counts = snap.val() || {};
+    const upd = {};
+    for (const id of Object.keys(counts)) upd["counts/" + id] = 0;
+    if (Object.keys(upd).length) await db.ref().update(upd);
+    say("counts reset: " + Object.keys(upd).length);
+  };
+})();
+</script>
+</body>
+</html>
