@@ -17,6 +17,7 @@
   .label:first-child { margin-top: 0; }
   .stim { white-space: pre-wrap; background: #f0f4f8; border-left: 4px solid #1e3a5f; padding: 10px 12px; border-radius: 0 6px 6px 0; font-size: 15.5px; line-height: 1.55; }
   .stim.ref { border-left-color: #2e7d32; background: #eef7ee; }
+  .stim.instr { border-left-color: #5b7186; background: #f7f9fb; color: #334; }
   .q { margin-top: 18px; }
   .q .qt { font-size: 15.5px; font-weight: 600; margin-bottom: 6px; }
   .choices label { display: inline-block; margin-right: 18px; font-size: 15px; }
@@ -157,12 +158,19 @@
     <div class="progress"><div id="progBar"></div></div>
 
     <div id="qbox">
+      <div class="label">Instructions (what the model sees)</div>
+      <div class="stim instr" id="instrBox"></div>
+
       <div class="label">Test case</div>
       <div class="stim" id="stimBox"></div>
 
       <div id="refBlock">
         <div class="label">Reference (correct) answer</div>
         <div class="stim ref" id="refBox"></div>
+        <div id="altBlock" style="display:none">
+          <div class="label">Other valid answers</div>
+          <div class="stim ref" id="altBox"></div>
+        </div>
       </div>
 
       <div id="questions"></div>
@@ -364,8 +372,16 @@
     const item = snap.val();
     if (!item) { mine.add(currentId); return next(); }
 
+    $("instrBox").textContent = item.instructions || "";
     $("stimBox").textContent = item.input;
     $("refBox").textContent = item.reference_answer;
+    const alts = item.alt_references;
+    if (Array.isArray(alts) && alts.length) {
+      $("altBlock").style.display = "block";
+      $("altBox").textContent = alts.map((a, i) => (i + 1) + ". " + a).join("\n");
+    } else {
+      $("altBlock").style.display = "none";
+    }
     const reviewCount = counts[currentId] || 0;
     $("progLine").textContent = "Item " + (mine.size + 1) + " of your session · this item has been reviewed " + reviewCount + " time" + (reviewCount === 1 ? "" : "s") + " before";
 
