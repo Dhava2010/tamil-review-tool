@@ -118,11 +118,15 @@
           const rec = {
             id: it.id,
             category: it.category || "",
+            subcategory: it.subcategory || "",
             format: it.format || "",
             input: it.input || "",
             instructions: it.instructions || "",
             reference_answer: it.reference_answer || ""
           };
+          if (it.alt_references) {
+            try { const a = JSON.parse(it.alt_references); if (Array.isArray(a) && a.length) rec.alt_references = a; } catch (e) {}
+          }
           const res = resultMap[it.id];
           if (res) {
             rec.raw_response = res.raw_response || "";

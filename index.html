@@ -18,6 +18,7 @@
   .stim { white-space: pre-wrap; background: #f0f4f8; border-left: 4px solid #1e3a5f; padding: 10px 12px; border-radius: 0 6px 6px 0; font-size: 15.5px; line-height: 1.55; }
   .stim.ref { border-left-color: #2e7d32; background: #eef7ee; }
   .stim.instr { border-left-color: #5b7186; background: #f7f9fb; color: #334; }
+  .stim.feat { border-left-color: #7b1fa2; background: #f9f3fb; }
   .q { margin-top: 18px; }
   .q .qt { font-size: 15.5px; font-weight: 600; margin-bottom: 6px; }
   .choices label { display: inline-block; margin-right: 18px; font-size: 15px; }
@@ -158,6 +159,9 @@
     <div class="progress"><div id="progBar"></div></div>
 
     <div id="qbox">
+      <div class="label">What this test case tests</div>
+      <div class="stim feat" id="metaBox"></div>
+
       <div class="label">Instructions (what the model sees)</div>
       <div class="stim instr" id="instrBox"></div>
 
@@ -372,6 +376,10 @@
     const item = snap.val();
     if (!item) { mine.add(currentId); return next(); }
 
+    const catName = CATEGORY_NAMES[item.category] || item.category || "";
+    const sub = item.subcategory || "";
+    const feat = FEATURES[sub] || "";
+    $("metaBox").textContent = "Category: " + catName + "  ·  Subcategory: " + sub + (feat ? "\n" + feat : "");
     $("instrBox").textContent = item.instructions || "";
     $("stimBox").textContent = item.input;
     $("refBox").textContent = item.reference_answer;
