@@ -9,8 +9,8 @@ const FIREBASE_CONFIG = {
 };
 
 const PHASE1_QUESTIONS = [
-  { id: "q1", label: "Is this test case grammatically correct?", type: "yesno" },
-  { id: "q2", label: "Does this test case accurately test the features it was meant to test (listed at the top of the page)?", type: "yesno" },
+  { id: "q1", label: "Is this Tamil test case grammatically correct?", type: "yesno" },
+  { id: "q2", label: "Does this test case accurately test the features it was meant to test(listed at the top of the page)?", type: "yesno" },
   { id: "q3", label: "Is there anything wrong with this test case other than the errors intended to be there?", type: "text" },
   { id: "q4", label: "Is the correct answer provided a valid reference answer to the test case?", type: "yesno" },
   { id: "q5", label: "Could any other answer also be considered correct?", type: "yesno" }
