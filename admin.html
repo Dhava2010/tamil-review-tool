@@ -42,6 +42,25 @@
   table.rt th { background: #eef2f6; position: sticky; top: 0; z-index: 1; }
   table.rt tr.fl td { background: #fdecea; }
   table.rt td.q3 { max-width: 240px; }
+  table.rt tbody tr { cursor: pointer; }
+  table.rt tbody tr:hover td { background: #eef2f6; }
+  table.rt tr.fl:hover td { background: #fadbd8; }
+  .modal { position: fixed; inset: 0; background: rgba(10,20,30,.55); display: none; align-items: flex-start; justify-content: center; overflow: auto; z-index: 50; padding: 24px 12px; }
+  .mpanel { background: #fff; border-radius: 12px; max-width: 780px; width: 100%; padding: 18px 20px 24px; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+  .mpanel h3 { margin: 0 0 4px; }
+  .mclose { float: right; background: #e3e9ef; color: #1e3a5f; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-weight: 600; margin-top: 0; }
+  .dlabel { font-size: 11.5px; font-weight: 700; text-transform: uppercase; color: #5b7186; margin: 14px 0 4px; }
+  .dblk { white-space: pre-wrap; border-left: 4px solid #1e3a5f; background: #f0f4f8; padding: 9px 11px; border-radius: 0 6px 6px 0; font-size: 14.5px; line-height: 1.5; }
+  .dblk.ref { border-color: #2e7d32; background: #eef7ee; }
+  .dblk.instr { border-color: #5b7186; background: #f7f9fb; color: #334; }
+  .dblk.feat { border-color: #7b1fa2; background: #f9f3fb; }
+  .qa { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 8px 10px; border-bottom: 1px solid #e6ecf2; font-size: 14px; }
+  .qa .ql { color: #334; }
+  .qa .av { font-weight: 800; min-width: 42px; text-align: right; }
+  .qa .av.y { color: #2e7d32; }
+  .qa .av.n { color: #b3261e; }
+  .qa .at { font-style: italic; color: #445; text-align: right; max-width: 55%; }
+  .flagbanner { background: #fdecea; border: 1px solid #d9534f; color: #a1261d; border-radius: 8px; padding: 9px 12px; font-size: 14px; margin-top: 12px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -83,6 +102,30 @@
       <tbody></tbody>
     </table></div>
     <div class="small" id="tblNote" style="margin-top:6px"></div>
+  </div>
+
+  <!-- RESPONSE DETAIL MODAL -->
+  <div class="modal" id="detailModal">
+    <div class="mpanel">
+      <button class="mclose" id="detailClose">✕ Close</button>
+      <h3 id="dItem">—</h3>
+      <div class="small" id="dWho"></div>
+      <div id="dFlag"></div>
+      <div class="dlabel">What this test case tests</div>
+      <div class="dblk feat" id="dFeat"></div>
+      <div class="dlabel">Instructions (what the model sees)</div>
+      <div class="dblk instr" id="dInstr"></div>
+      <div class="dlabel">Test case</div>
+      <div class="dblk" id="dInput"></div>
+      <div class="dlabel">Reference (correct) answer</div>
+      <div class="dblk ref" id="dRef"></div>
+      <div id="dAltWrap" style="display:none">
+        <div class="dlabel">Other valid answers</div>
+        <div class="dblk ref" id="dAlt"></div>
+      </div>
+      <div class="dlabel">This reviewer's responses</div>
+      <div id="dAnswers"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -317,14 +360,60 @@
     const rows = tableRows();
     $("respTable").tBodies[0].innerHTML = rows.map(r => {
       const t = new Date(r.ts).toLocaleString();
-      return '<tr class="' + (r.flag ? "fl" : "") + '"><td>' + t + "</td><td>" + esc(r.id) +
+      return '<tr class="' + (r.flag ? "fl" : "") + '" data-id="' + esc(r.id) + '" data-rev="' + esc(r.rev) + '" data-ts="' + r.ts + '"><td>' + t + "</td><td>" + esc(r.id) +
         "</td><td><b>" + esc(r.rev) + "</b></td><td>" + esc(r.a.q1 || "") +
         "</td><td>" + esc(r.a.q2 || "") + '</td><td class="q3">' + esc(r.a.q3 || "") +
         "</td><td>" + esc(r.a.q4 || "") + "</td><td>" + esc(r.a.q5 || "") +
         "</td><td>" + (r.flag ? "⚠ flag" : "") + "</td></tr>";
     }).join("");
-    $("tblNote").textContent = rows.length + " response(s) shown";
+    $("tblNote").textContent = rows.length + " response(s) shown — click any row to see the full test case with that reviewer's answers";
   }
+
+  function openDetail(id, rev) {
+    const it = DATA.items[id] || {};
+    const rec = (DATA.resp[id] || {})[rev];
+    if (!rec) return;
+    const a = rec.answers || {};
+    const flag = isFlag(a);
+    $("dItem").textContent = id;
+    $("dWho").textContent = "Response from " + rev + " · " + new Date(rec.ts || 0).toLocaleString();
+    $("dFlag").innerHTML = flag ? '<div class="flagbanner">⚠ Flagged — q1/q2/q4 = No or issue text present (escalates this blueprint group)</div>' : "";
+    const cat = (typeof CATEGORY_NAMES !== "undefined" && CATEGORY_NAMES[it.category]) || it.category || "";
+    const feat = (typeof FEATURES !== "undefined" && FEATURES[it.subcategory]) || "";
+    $("dFeat").textContent = "Category: " + cat + "  ·  Subcategory: " + (it.subcategory || "") + (feat ? "\n" + feat : "");
+    $("dInstr").textContent = it.instructions || "";
+    $("dInput").textContent = it.input || "";
+    $("dRef").textContent = it.reference_answer || "";
+    const alts = it.alt_references;
+    if (Array.isArray(alts) && alts.length) {
+      $("dAltWrap").style.display = "block";
+      $("dAlt").textContent = alts.map((x, i) => (i + 1) + ". " + x).join("\n");
+    } else {
+      $("dAltWrap").style.display = "none";
+    }
+    const qs = (typeof PHASE1_QUESTIONS !== "undefined") ? PHASE1_QUESTIONS : [];
+    $("dAnswers").innerHTML = qs.map(q => {
+      const ans = a[q.id];
+      if (q.type === "yesno") {
+        const yes = ans === "yes";
+        return '<div class="qa"><span class="ql">' + esc(q.label) + '</span><span class="av ' + (yes ? "y" : "n") + '">' +
+          esc((ans || "—").toUpperCase()) + "</span></div>";
+      }
+      const txt = (ans || "").trim();
+      return '<div class="qa"><span class="ql">' + esc(q.label) + '</span><span class="at">' +
+        (txt ? esc(txt) : "— (left blank)") + "</span></div>";
+    }).join("");
+    $("detailModal").style.display = "flex";
+  }
+
+  $("respTable").tBodies[0].addEventListener("click", (e) => {
+    const tr = e.target.closest("tr");
+    if (tr && tr.dataset.id && DATA) openDetail(tr.dataset.id, tr.dataset.rev);
+  });
+  $("detailClose").onclick = () => { $("detailModal").style.display = "none"; };
+  $("detailModal").addEventListener("click", (e) => {
+    if (e.target === $("detailModal")) $("detailModal").style.display = "none";
+  });
 
   $("flt").onchange = () => { if (DATA) renderTable(); };
   $("loadBtn").onclick = loadData;
