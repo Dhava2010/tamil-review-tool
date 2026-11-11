@@ -22,6 +22,26 @@
   .ok { background: #eef7ee; border: 1px solid #9cc8a0; border-radius: 8px; padding: 12px 14px; font-size: 14.5px; margin-top: 12px; display: none; }
   label.fl { display: block; margin-top: 14px; font-weight: 600; font-size: 14.5px; }
   .small { font-size: 13.5px; color: #5b7186; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .stat { background: #f0f4f8; border-radius: 8px; padding: 10px 14px; min-width: 128px; }
+  .stat b { display: block; font-size: 21px; color: #1e3a5f; }
+  .stat span { font-size: 12.5px; color: #5b7186; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); gap: 6px; margin-top: 12px; }
+  .chip { font-size: 11px; padding: 6px 8px; border-radius: 6px; background: #eceff2; border: 2px solid transparent; font-family: ui-monospace, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip.s1 { background: #fff3cd; border-color: #f0ad4e; }
+  .chip.s2 { background: #e3f4e5; border-color: #5cb85c; }
+  .chip.flag { background: #fdecea; border-color: #d9534f; font-weight: 700; }
+  .legend { font-size: 12.5px; color: #5b7186; margin-top: 10px; }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; vertical-align: -1px; margin: 0 4px 0 10px; border: 1px solid #999; }
+  .ctl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  .ctl button { margin-top: 0; padding: 9px 16px; font-size: 14px; }
+  select { font: inherit; padding: 8px 9px; border: 1px solid #c4cdd6; border-radius: 6px; }
+  .tblwrap { max-height: 430px; overflow: auto; margin-top: 12px; border: 1px solid #dde5ec; border-radius: 8px; }
+  table.rt { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.rt th, table.rt td { border-bottom: 1px solid #e6ecf2; padding: 5px 8px; text-align: left; vertical-align: top; }
+  table.rt th { background: #eef2f6; position: sticky; top: 0; z-index: 1; }
+  table.rt tr.fl td { background: #fdecea; }
+  table.rt td.q3 { max-width: 240px; }
 </style>
 </head>
 <body>
@@ -39,6 +59,30 @@
       <li>Below: import the test cases (and results after your model run finishes), then share <code>index.html</code>'s link with reviewers.</li>
     </ol>
     <div class="warn" id="cfgWarn">config.js still has placeholder values — do setup step 3 before importing.</div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Data — sample coverage &amp; responses</h2>
+    <div class="ctl">
+      <button id="loadBtn">Load data</button>
+      <select id="flt"><option value="all">All responses</option><option value="flag">Flagged only</option></select>
+      <button id="csvBtn">Export CSV</button>
+      <span class="small" id="dataAsOf"></span>
+    </div>
+    <div class="small" style="margin-top:8px">Flag = q1/q2/q4 answered <b>No</b>, or q3 has text. (q5=Yes means alternate answers exist — not a flag.)</div>
+    <div class="stats" id="dataStats"></div>
+    <div class="legend">Coverage — each chip is one of the 144 sampled test cases:
+      <i style="background:#eceff2"></i>not reviewed
+      <i style="background:#fff3cd;border-color:#f0ad4e"></i>1 review
+      <i style="background:#e3f4e5;border-color:#5cb85c"></i>2 reviews (target)
+      <i style="background:#fdecea;border-color:#d9534f"></i>flagged → escalate the blueprint group</div>
+    <div class="grid" id="coverageGrid"><div class="small">Loading…</div></div>
+    <div id="escalation"></div>
+    <div class="tblwrap"><table class="rt" id="respTable">
+      <thead><tr><th>time</th><th>item</th><th>rev</th><th>q1</th><th>q2</th><th>q3 — issue</th><th>q4</th><th>q5</th><th>flag</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="small" id="tblNote" style="margin-top:6px"></div>
   </div>
 
   <div class="card">
@@ -176,6 +220,131 @@
     if (Object.keys(upd).length) await db.ref().update(upd);
     say("counts reset: " + Object.keys(upd).length);
   };
+
+  // ---------- Data tab: sample coverage & responses ----------
+  let DATA = null;
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const isFlag = (a) => !!a && (a.q1 === "no" || a.q2 === "no" || a.q4 === "no" || !!(a.q3 && a.q3.trim()));
+  const chip = (b, s) => '<div class="stat"><b>' + esc(b) + '</b><span>' + esc(s) + '</span></div>';
+
+  async function loadData() {
+    if (!configured) return;
+    $("loadBtn").disabled = true;
+    $("loadBtn").textContent = "Loading…";
+    try {
+      const [s, c, r, i] = await Promise.all([
+        db.ref("meta/sample").once("value"),
+        db.ref("counts").once("value"),
+        db.ref("responses").once("value"),
+        db.ref("items").once("value")
+      ]);
+      DATA = { sample: s.val() || [], counts: c.val() || {}, resp: r.val() || {}, items: i.val() || {} };
+      renderData();
+      $("dataAsOf").textContent = "updated " + new Date().toLocaleTimeString();
+    } catch (e) {
+      alert("Load failed: " + e.message);
+    }
+    $("loadBtn").disabled = false;
+    $("loadBtn").textContent = "Refresh data";
+  }
+
+  const revCount = (id) => Object.keys(DATA.resp[id] || {}).length;
+  const itemFlagged = (id) => Object.values(DATA.resp[id] || {}).some(v => isFlag(v.answers));
+
+  function renderData() {
+    const sample = DATA.sample;
+    let ge1 = 0, ge2 = 0, flagged = 0;
+    const perRev = {};
+    for (const id of sample) {
+      const n = revCount(id);
+      if (n >= 1) ge1++;
+      if (n >= 2) ge2++;
+      if (itemFlagged(id)) flagged++;
+      for (const [rev] of Object.entries(DATA.resp[id] || {})) perRev[rev] = (perRev[rev] || 0) + 1;
+    }
+    $("dataStats").innerHTML =
+      chip(ge1 + " / " + sample.length, "sampled items reviewed ≥1") +
+      chip(ge2 + " / " + sample.length, "reviewed twice (target)") +
+      chip(flagged, "flagged items") +
+      chip(Object.keys(perRev).length, "reviewers active") +
+      Object.entries(perRev).sort().map(([r, n]) => chip(r, n + " responses")).join("");
+
+    $("coverageGrid").innerHTML = sample.map(id => {
+      const n = revCount(id), f = itemFlagged(id);
+      const cls = f ? "flag" : (n >= 2 ? "s2" : n === 1 ? "s1" : "");
+      const title = id + " — " + n + " review(s)" + (f ? " — FLAGGED" : "");
+      return '<div class="chip ' + cls + '" title="' + esc(title) + '">' + esc(id) + " ·" + n + "</div>";
+    }).join("");
+
+    const cells = {};
+    for (const id of sample) {
+      if (!itemFlagged(id)) continue;
+      const it = DATA.items[id] || {};
+      const key = (it.category || "?") + " · " + (it.subcategory || "?") + " · " + (it.format || "?");
+      (cells[key] = cells[key] || []).push(id);
+    }
+    const cellKeys = Object.keys(cells).sort();
+    $("escalation").innerHTML = cellKeys.length
+      ? '<div class="warn"><b>Escalation queue — ' + cellKeys.length + " blueprint group(s) with flags:</b><ul style=\"margin:6px 0 0 18px;padding:0\">" +
+        cellKeys.map(k => "<li><b>" + esc(k) + "</b> — " + cells[k].map(esc).join(", ") + "</li>").join("") + "</ul></div>"
+      : '<div class="ok" style="display:block">No flagged items yet — nothing to escalate.</div>';
+
+    const sel = $("flt");
+    const prev = sel.value;
+    sel.innerHTML = '<option value="all">All responses</option><option value="flag">Flagged only</option>' +
+      Object.keys(perRev).sort().map(r => '<option value="rev:' + esc(r) + '">Reviewer ' + esc(r) + "</option>").join("");
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+    renderTable();
+  }
+
+  function tableRows() {
+    const flt = $("flt").value;
+    const rows = [];
+    for (const [id, revs] of Object.entries(DATA.resp)) {
+      for (const [rev, rec] of Object.entries(revs)) {
+        const a = rec.answers || {};
+        const flag = isFlag(a);
+        if (flt === "flag" && !flag) continue;
+        if (flt.startsWith("rev:") && rev !== flt.slice(4)) continue;
+        rows.push({ ts: rec.ts || 0, id, rev, a, flag });
+      }
+    }
+    rows.sort((x, y) => y.ts - x.ts);
+    return rows;
+  }
+
+  function renderTable() {
+    const rows = tableRows();
+    $("respTable").tBodies[0].innerHTML = rows.map(r => {
+      const t = new Date(r.ts).toLocaleString();
+      return '<tr class="' + (r.flag ? "fl" : "") + '"><td>' + t + "</td><td>" + esc(r.id) +
+        "</td><td><b>" + esc(r.rev) + "</b></td><td>" + esc(r.a.q1 || "") +
+        "</td><td>" + esc(r.a.q2 || "") + '</td><td class="q3">' + esc(r.a.q3 || "") +
+        "</td><td>" + esc(r.a.q4 || "") + "</td><td>" + esc(r.a.q5 || "") +
+        "</td><td>" + (r.flag ? "⚠ flag" : "") + "</td></tr>";
+    }).join("");
+    $("tblNote").textContent = rows.length + " response(s) shown";
+  }
+
+  $("flt").onchange = () => { if (DATA) renderTable(); };
+  $("loadBtn").onclick = loadData;
+
+  $("csvBtn").onclick = () => {
+    if (!DATA) { alert("Load data first."); return; }
+    const rows = tableRows();
+    const cell = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+    const lines = [["item_id", "reviewer", "q1_grammar", "q2_feature", "q3_issue", "q4_reference", "q5_other_answers", "flagged", "timestamp_iso"].join(",")];
+    for (const r of rows) {
+      lines.push([r.id, r.rev, r.a.q1 || "", r.a.q2 || "", r.a.q3 || "", r.a.q4 || "", r.a.q5 || "", r.flag ? "YES" : "", new Date(r.ts).toISOString()].map(cell).join(","));
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "review_responses.csv";
+    a.click();
+  };
+
+  if (configured) loadData();
 })();
 </script>
 </body>
